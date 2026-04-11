@@ -1,0 +1,12 @@
+[project]
+name = "cewa-openenv"
+version = "1.0.0"
+description = "Cognitive Enterprise Workflow Agent - OpenEnv Environment"
+authors = [
+    { name = "devKalon" }
+]
+dependencies = []
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
