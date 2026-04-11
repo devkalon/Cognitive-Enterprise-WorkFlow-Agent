@@ -1,11 +1,18 @@
 [project]
 name = "cewa-openenv"
 version = "1.0.0"
-description = "Cognitive Enterprise Workflow Agent - OpenEnv Environment"
-authors = [
-    { name = "devKalon" }
+description = "Cognitive Enterprise Workflow Agent - OpenEnv"
+authors = [{ name = "devKalon" }]
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "openenv-core>=0.2.0"
 ]
-dependencies = []
+
+[project.scripts]
+server = "server.app:main"
 
 [build-system]
 requires = ["setuptools", "wheel"]
