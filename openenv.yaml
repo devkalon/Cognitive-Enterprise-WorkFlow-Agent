@@ -1,0 +1,362 @@
+name: cognitive-enterprise-workflow-agent
+version: "1.0.0"
+description: >
+  Enterprise IT workflow triage and resolution environment. An AI agent acts as
+  a Cognitive Workflow Manager: it processes realistic enterprise ticket scenarios,
+  classifies the issue category, sets urgency priority, routes to the correct
+  team, decides whether to escalate, and drafts a resolution response — all under
+  SLA time constraints with partial and sometimes misleading information.
+  Models the daily cognitive work of an IT Operations Manager or Service Desk Lead.
+
+author: cewa-submission
+license: MIT
+
+tags:
+  - openenv
+  - enterprise
+  - workflow-management
+  - cognitive-agent
+  - it-operations
+  - triage
+  - nlp-reasoning
+
+# ── Environment class ──────────────────────────────────────────────────────
+
+environment:
+  class: CEWAEnv
+  module: env.environment
+  entrypoint: app:app
+  reset_endpoint: POST /reset
+  step_endpoint: POST /step
+  state_endpoint: GET /state
+
+# ── Observation space ──────────────────────────────────────────────────────
+
+observation:
+  type: structured
+  schema: env.state.Observation
+  fields:
+    task_id:
+      type: string
+      description: Unique task identifier (e.g. task1_basic_triage)
+
+    task_description:
+      type: string
+      description: >
+        Full enterprise ticket scenario text. Includes realistic details:
+        timestamps, requester info, signal descriptions, system alerts.
+        May contain misleading signals on harder tasks.
+
+    difficulty:
+      type: string
+      enum: [easy, medium, hard]
+      description: Task difficulty level
+
+    step:
+      type: integer
+      minimum: 0
+      description: Current step number within the episode (0-indexed)
+
+    episode_length:
+      type: integer
+      description: Maximum steps allowed before forced episode termination
+
+    history:
+      type: array
+      items:
+        type: string
+      description: >
+        List of past action keys in format "action_type:value".
+        Used to detect repeated actions.
+
+    partial_decisions:
+      type: object
+      description: >
+        Decisions made so far in this episode. Keys:
+        classification (string), priority (int), team (string),
+        response (string), escalated (bool), info_requested (bool).
+
+    sla:
+      type: object
+      description: SLA tracking object
+      properties:
+        steps_remaining:
+          type: integer
+          description: Steps remaining before SLA breach
+        breached:
+          type: boolean
+          description: Whether SLA has been breached
+
+    similar_past_tickets:
+      type: array
+      items:
+        type: string
+      description: >
+        Relevant historical tickets shown as context.
+        Format: "TKT-ID | category | priority | team | outcome"
+
+    team_availability:
+      type: object
+      description: >
+        Map of team name → bool. Shows which teams are currently available.
+        Unavailable teams cannot receive assignments.
+
+    urgency_signals:
+      type: array
+      items:
+        type: string
+      description: >
+        Extracted urgency indicators from ticket and monitoring systems.
+        Some signals may be distractors on harder tasks.
+
+    task_context:
+      type: object
+      description: >
+        Task metadata: score_weights, target_score, grader_notes.
+        Visible to agent — can inform reasoning strategy.
+
+# ── Action space ───────────────────────────────────────────────────────────
+
+action:
+  type: parameterized-discrete
+  schema: env.state.Action
+  description: >
+    Each step the agent takes exactly one action.
+    Actions are sequential workflow decisions building toward complete ticket resolution.
+  fields:
+    action_type:
+      type: string
+      enum:
+        - classify
+        - prioritize
+        - assign
+        - respond
+        - escalate
+        - request_info
+      description: The type of workflow decision
+
+    value:
+      type: string
+      description: >
+        The decision value. Constraints by action_type:
+        classify   → one of: billing | bug | access | network | security | hr | general
+        prioritize → one of: "1" | "2" | "3" | "4" | "5"  (5 = critical)
+        assign     → one of: finance | tech | security | hr | management
+        respond    → any string, minimum 10 characters
+        escalate   → any string (reason for escalation)
+        request_info → any string (the question to ask)
+
+    reason:
+      type: string
+      required: false
+      description: >
+        Agent's stated reasoning for this decision.
+        Used in reward calculation (reasoning quality signal).
+        Longer, substantive reasons earn higher reward.
+
+  valid_values:
+    classify:    [billing, bug, access, network, security, hr, general]
+    prioritize:  ["1", "2", "3", "4", "5"]
+    assign:      [finance, tech, security, hr, management]
+    respond:     "string (min 10 chars)"
+    escalate:    "string (reason)"
+    request_info: "string (question)"
+
+# ── Reward specification ───────────────────────────────────────────────────
+
+reward:
+  range: [-1.0, 1.0]
+  type: dense
+  description: >
+    Dense reward signal every step. Agent receives feedback on each individual
+    decision, not just at episode end. Partial credit for close answers.
+    Episode-final bonus/penalty for overall completeness and correctness.
+
+  step_signals:
+    positive:
+      correct_classification:   +0.30
+      priority_exact:           +0.20
+      priority_off_by_1:        +0.08
+      correct_team:             +0.25
+      response_strong:          +0.20
+      correct_escalation:       +0.15
+      no_escalation_correct:    +0.10
+      reasoning_good:           +0.06
+      order_efficiency_bonus:   +0.05
+      info_request_useful:      +0.08
+
+    negative:
+      wrong_classification:     -0.22
+      priority_off_by_2:        -0.08
+      priority_far:             -0.18
+      wrong_team:               -0.20
+      wrong_team_security:      -0.30
+      response_weak:            -0.12
+      response_forbidden_word:  -0.10
+      unnecessary_escalation:   -0.12
+      repeated_action:          -0.08
+      sla_warning:              -0.08
+      sla_breach:               -0.28
+      invalid_action:           -0.25
+
+  episode_final:
+    all_correct_bonus:     +0.25
+    complete_bonus:        +0.10
+    sla_kept_bonus:        +0.08
+    no_escalation_correct: +0.10
+    missing_decision:      -0.12  # per missing required decision
+    missed_escalation:     -0.18
+
+# ── Task definitions ───────────────────────────────────────────────────────
+
+tasks:
+
+  - id: task1_basic_triage
+    name: "Billing Dispute — Duplicate Charge"
+    difficulty: easy
+    episode_length: 5
+    sla_steps: 5
+    target_score: 0.85
+    ground_truth:
+      category:   billing
+      priority:   4
+      team:       finance
+      escalation: false
+    description: >
+      Single-domain billing complaint. Gold Enterprise customer reports a
+      duplicate charge of $299. Clear signals, no distractors. Agent must
+      classify as billing, set priority=4 (churn risk), assign to finance,
+      and draft a response mentioning refund and billing.
+    scoring:
+      classification:   30%
+      priority:         20%
+      team_assignment:  25%
+      response_quality: 25%
+
+  - id: task2_incident_triage
+    name: "Security Incident — Credential Attack + Portal Outage"
+    difficulty: medium
+    episode_length: 6
+    sla_steps: 4
+    target_score: 0.78
+    ground_truth:
+      category:   security
+      priority:   5
+      team:       security
+      escalation: true
+    description: >
+      Three correlated signals: 847 failed auth attempts from Tor IPs,
+      14 user lockouts, and compliance portal outage. Agent must identify
+      the security root cause (not a software bug), escalate immediately,
+      and respond under tight SLA. Distractor: app crash signal could
+      mislead toward "bug" classification and tech team assignment.
+    scoring:
+      classification:     25%
+      priority:           20%
+      team_assignment:    25%
+      escalation:         15%
+      response_quality:   15%
+
+  - id: task3_complex_orchestration
+    name: "Competing Priority Triage — Queue Overload"
+    difficulty: hard
+    episode_length: 7
+    sla_steps: 4
+    target_score: 0.72
+    ground_truth:
+      category:   bug
+      priority:   5
+      team:       tech
+      escalation: true
+    description: >
+      Three simultaneous issues: (A) $142k overdue vendor invoice threatening
+      cloud suspension, (B) new CTO onboarding in 58 minutes with no IT setup,
+      (C) CI/CD pipeline broken for 9 hours causing $8,200/hr revenue loss and
+      47 developers blocked. Agent must reason past the large dollar amounts
+      and social pressure to identify Issue C as highest impact. Hard distractors
+      are intentional — dollar anchoring (invoice) and social urgency (CEO pressure).
+      Genuinely challenges frontier models.
+    scoring:
+      classification:     20%
+      priority:           20%
+      team_assignment:    25%
+      escalation:         15%
+      response_quality:   10%
+      reasoning_quality:  10%
+
+  - id: task4_postmortem_contradiction
+    name: "Post-mortem Contradiction — Who Broke Production?"
+    difficulty: expert
+    episode_length: 8
+    sla_steps: 6
+    target_score: 0.68
+    ground_truth:
+      category:   bug
+      priority:   3
+      team:       tech
+      escalation: false
+      info_request_required: true
+    description: >
+      Three team leads submitted conflicting post-mortem accounts of last night's
+      23-minute outage. Their timelines contradict each other — one is mathematically
+      impossible. Agent must identify the timeline impossibility, classify the real
+      root cause (N+1 query bug + connection pool ceiling), request the one missing
+      piece of evidence (git commit timestamp for deploy d4f9a2), and draft a
+      blameless post-mortem naming failure modes without blaming individuals.
+      Novel mechanic: request_info action is scored (20% weight).
+    scoring:
+      classification:    15%
+      priority:          20%
+      team_assignment:   15%
+      info_request:      20%
+      response_quality:  20%
+      reasoning_quality: 10%
+
+# ── Baseline scores ────────────────────────────────────────────────────────
+
+baseline_scores:
+  rule_based_agent:
+    task1_basic_triage:              0.72
+    task2_incident_triage:           0.48
+    task3_complex_orchestration:     0.31
+    task4_postmortem_contradiction:  0.18
+    average:                         0.42
+
+  expected_frontier_llm:
+    task1_basic_triage:              0.88
+    task2_incident_triage:           0.74
+    task3_complex_orchestration:     0.61
+    task4_postmortem_contradiction:  0.55
+    average:                         0.70
+
+# ── Setup & deployment ─────────────────────────────────────────────────────
+
+setup:
+  python: ">=3.9"
+  dependencies: requirements.txt
+  install: pip install -r requirements.txt
+  run_server: python app.py
+  run_inference: python inference.py
+  docker_build: docker build -t cewa .
+  docker_run: >
+    docker run -p 7860:7860
+    -e API_BASE_URL=$API_BASE_URL
+    -e MODEL_NAME=$MODEL_NAME
+    -e HF_TOKEN=$HF_TOKEN
+    cewa
+
+environment_variables:
+  required:
+    API_BASE_URL: "LLM API base URL (e.g. https://api.openai.com/v1)"
+    MODEL_NAME:   "Model identifier (e.g. gpt-4o-mini, claude-sonnet-4-6)"
+    HF_TOKEN:     "HuggingFace / API key for authentication"
+  optional:
+    OPENAI_API_KEY: "Fallback if HF_TOKEN not set"
+
+endpoints:
+  health:   "GET  /health    → {status: ok}"
+  reset:    "POST /reset     → {session_id, observation, task_id}"
+  step:     "POST /step      → {observation, reward, done, info}"
+  state:    "GET  /state     → {observation}  (query: session_id)"
+  tasks:    "GET  /tasks     → {tasks: [...]}"
+  grade:    "POST /grade     → grader report  (query: task_id, seed)"
