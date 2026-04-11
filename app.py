@@ -54,16 +54,29 @@ async def health():
 
 
 @app.post("/reset")
-async def reset(req: ResetRequest):
+async def reset(req: Optional[ResetRequest] = None):
     """Reset environment and return initial observation."""
-    env = CEWAEnv(task_id=req.task_id, seed=req.seed)
-    obs = env.reset(seed=req.seed)
+
+    # SAFE defaults
+    task_id = None
+    seed = 42
+
+    if req is not None:
+        if req.task_id is not None:
+            task_id = req.task_id
+        if req.seed is not None:
+            seed = req.seed
+
+    env = CEWAEnv(task_id=task_id, seed=seed)
+    obs = env.reset(seed=seed)
+
     sid = str(uuid.uuid4())[:12]
     _sessions[sid] = env
+
     return {
         "session_id": sid,
         "observation": obs.model_dump(),
-        "task_id": obs.task_id,
+        "task_id": getattr(obs, "task_id", task_id),
     }
 
 
