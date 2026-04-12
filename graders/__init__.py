@@ -24,33 +24,37 @@ def safe_score(score: float) -> float:
 
 
 def _response_score(response: str, task: Dict[str, Any]) -> float:
-    """Score response 0.0–1.0 using must_include and must_not_include."""
     rv        = (response or "").lower()
     must_inc  = task.get("response_must_include", [])
     must_not  = task.get("response_must_not_include", [])
     matches   = sum(1 for w in must_inc if w in rv)
     forbidden = sum(1 for w in must_not if w in rv)
-    score     = min(1.0, matches / max(len(must_inc), 1))
-    score    -= forbidden * 0.20
-    return max(0.0, round(score, 4))
+
+    score = matches / max(len(must_inc), 1)
+    score -= forbidden * 0.20
+
+    # enforce strict bounds
+    return max(1e-6, min(1 - 1e-6, score))
 
 
 def _priority_score(given, true_priority: int) -> float:
-    """Priority score with partial credit."""
     try:
         diff = abs(int(given) - true_priority)
-    except (ValueError, TypeError):
-        return 0.0
-    if diff == 0: return 1.0
-    if diff == 1: return 0.50
-    if diff == 2: return 0.15
-    return 0.0
+    except:
+        return 1e-6
+
+    if diff == 0: score = 0.999999
+    elif diff == 1: score = 0.50
+    elif diff == 2: score = 0.15
+    else: score = 1e-6
+
+    return score
 
 
 def _reasoning_score(reasons_given: int, difficulty: str) -> float:
-    """Normalize reasoning quality by task difficulty."""
     needed = {"easy": 1, "medium": 2, "hard": 3}[difficulty]
-    return min(1.0, reasons_given / needed)
+    score = reasons_given / needed
+    return max(1e-6, min(1 - 1e-6, score))
 
 
 # ── Grader 1 — Easy ────────────────────────────────────────────────────────
@@ -86,8 +90,8 @@ class Task1Grader:
         if self.sla_breached:
             total *= 0.85
             total = max(0.0, min(1.0, total))
-            total = safe_score(total)
-            return round(total, 4)
+            total = max(1e-6, min(1 - 1e-6, total))
+            return round(total, 6)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -174,8 +178,8 @@ class Task2Grader:
         if self.sla_breached:
             total *= 0.80
             total = max(0.0, min(1.0, total))
-            total = safe_score(total)
-            return round(total, 4)
+            total = max(1e-6, min(1 - 1e-6, total))
+            return round(total, 6)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -285,8 +289,8 @@ class Task3Grader:
         if self.sla_breached:
             total *= 0.75
             total = max(0.0, min(1.0, total))
-            total = safe_score(total)
-            return round(total, 4)
+            total = max(1e-6, min(1 - 1e-6, total))
+            return round(total, 6)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -420,8 +424,8 @@ class Task4Grader:
         if self.sla_breached:
             total *= 0.80
             total = max(0.0, min(1.0, total))
-            total = safe_score(total)
-            return round(total, 4)
+            total = max(1e-6, min(1 - 1e-6, total))
+            return round(total, 6)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
