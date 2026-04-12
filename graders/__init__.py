@@ -308,7 +308,7 @@ class Task3Grader:
         # ALWAYS normalize
         total = min(1 - 1e-6, max(1e-4, total))
 
-        treturn final_score(total)
+        return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
