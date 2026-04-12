@@ -14,15 +14,6 @@ from __future__ import annotations
 from typing import Dict, Any
 from env.state import Observation, Action, StepInfo
 
-def safe_score(score: float) -> float:
-    EPS = 1e-6
-    if score <= 0:
-        return EPS
-    if score >= 1:
-        return 1 - EPS
-    return score
-
-
 def _response_score(response: str, task: Dict[str, Any]) -> float:
     rv        = (response or "").lower()
     must_inc  = task.get("response_must_include", [])
@@ -41,12 +32,12 @@ def _priority_score(given, true_priority: int) -> float:
     try:
         diff = abs(int(given) - true_priority)
     except:
-        return 1e-6
+        return 1e-4
 
-    if diff == 0: score = 0.999999
+    if diff == 0: score = 0.98
     elif diff == 1: score = 0.50
     elif diff == 2: score = 0.15
-    else: score = 1e-6
+    else: score = 1e-4
 
     return score
 
@@ -81,17 +72,22 @@ class Task1Grader:
         pd = final_obs.partial_decisions
         w  = task["task_context"]["score_weights"]
 
-        c  = w["classification"]   * (1.0 if pd.get("classification") == task["true_category"] else 0.0)
+        c  = w["classification"]   * (0.99 if pd.get("classification") == task["true_category"] else 0.0)
         p  = w["priority"]         * _priority_score(pd.get("priority"), task["true_priority"])
-        t  = w["team_assignment"]  * (1.0 if pd.get("team") == task["true_team"] else 0.0)
+        t  = w["team_assignment"]  * (0.99 if pd.get("team") == task["true_team"] else 0.0)
         r  = w["response_quality"] * _response_score(pd.get("response", ""), task)
 
         total = c + p + t + r
+
+        # Apply SLA penalty if needed
         if self.sla_breached:
             total *= 0.85
-            total = max(0.0, min(1.0, total))
-            total = max(1e-6, min(1 - 1e-6, total))
-            return round(total, 6)
+
+        # ALWAYS normalize
+        total = min(1 - 1e-6, max(1e-4, total))
+ 
+        total = min(0.9999, max(1e-4, total))
+        return float(f"{total:.6f}")
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -150,12 +146,12 @@ class Task2Grader:
         pd = final_obs.partial_decisions
         w  = task["task_context"]["score_weights"]
 
-        c = w["classification"]  * (1.0 if pd.get("classification") == task["true_category"] else 0.0)
+        c = w["classification"]  * (0.99 if pd.get("classification") == task["true_category"] else 0.0)
         p = w["priority"]        * _priority_score(pd.get("priority"), task["true_priority"])
 
         # Team — extra penalty for choosing tech on security incident
         if pd.get("team") == task["true_team"]:
-            t = w["team_assignment"] * 1.0
+            t = w["team_assignment"] * 0.99
         elif self.assigned_tech:
             t = w["team_assignment"] * -0.30   # fell for distractor
         else:
@@ -164,9 +160,9 @@ class Task2Grader:
         # Escalation (bidirectional)
         requires = task.get("requires_escalation", False)
         if requires and self.escalated:
-            e = w["escalation_decision"] * 1.0
+            e = w["escalation_decision"] * 0.99
         elif not requires and not self.escalated:
-            e = w["escalation_decision"] * 1.0
+            e = w["escalation_decision"] * 0.99
         elif requires and not self.escalated:
             e = w["escalation_decision"] * -0.50  # missed mandatory escalation
         else:
@@ -175,11 +171,16 @@ class Task2Grader:
         r = w["response_quality"] * _response_score(pd.get("response", ""), task)
 
         total = c + p + t + e + r
+
+        # Apply SLA penalty if needed
         if self.sla_breached:
-            total *= 0.80
-            total = max(0.0, min(1.0, total))
-            total = max(1e-6, min(1 - 1e-6, total))
-            return round(total, 6)
+             total *= 0.80
+
+        # ALWAYS normalize
+        total = min(1 - 1e-6, max(1e-4, total))
+
+        total = min(0.9999, max(1e-4, total))
+        return float(f"{total:.6f}")
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -254,7 +255,7 @@ class Task3Grader:
 
         # Classification — distractor penalty
         if pd.get("classification") == task["true_category"]:
-            c = w["classification"] * 1.0
+            c = w["classification"] * 0.99
         elif self.chose_billing or self.chose_hr:
             c = w["classification"] * -0.25  # fell for a distractor
         else:
@@ -264,7 +265,7 @@ class Task3Grader:
 
         # Team — distractor penalty
         if pd.get("team") == task["true_team"]:
-            t = w["team_assignment"] * 1.0
+            t = w["team_assignment"] * 0.99
         elif self.chose_finance_team or self.chose_hr_team:
             t = w["team_assignment"] * -0.20  # chose distractor team
         else:
@@ -273,9 +274,9 @@ class Task3Grader:
         # Escalation
         requires = task.get("requires_escalation", False)
         if requires and self.escalated:
-            e = w["escalation_decision"] * 1.0
+            e = w["escalation_decision"] * 0.99
         elif not requires and not self.escalated:
-            e = w["escalation_decision"] * 1.0
+            e = w["escalation_decision"] * 0.99
         elif requires and not self.escalated:
             e = w["escalation_decision"] * -0.60
         else:
@@ -286,11 +287,16 @@ class Task3Grader:
         rsn = w["reasoning_quality"] * _reasoning_score(self.reasons_given, "hard")
 
         total = c + p + t + e + r + rsn
+
+        # Apply SLA penalty if needed
         if self.sla_breached:
             total *= 0.75
-            total = max(0.0, min(1.0, total))
-            total = max(1e-6, min(1 - 1e-6, total))
-            return round(total, 6)
+
+        # ALWAYS normalize
+        total = min(1 - 1e-6, max(1e-4, total))
+
+        total = min(0.9999, max(1e-4, total))
+        return float(f"{total:.6f}")
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -386,7 +392,7 @@ class Task4Grader:
         w  = task["task_context"]["score_weights"]
 
         # Classification
-        c = w["classification"] * (1.0 if pd.get("classification") == task["true_category"] else 0.0)
+        c = w["classification"] * (0.99 if pd.get("classification") == task["true_category"] else 0.0)
 
         # Priority — p=3 is correct; p=4 gets partial; p=5 is wrong (outage resolved)
         p_given = pd.get("priority")
@@ -395,7 +401,7 @@ class Task4Grader:
         except (ValueError, TypeError):
             diff = 99
         if diff == 0:
-            p = w["priority"] * 1.0
+            p = w["priority"] * 0.99
         elif diff == 1:
             p = w["priority"] * 0.40
         elif self.chose_high_priority:
@@ -404,11 +410,11 @@ class Task4Grader:
             p = 0.0
 
         # Team
-        t = w["team_assignment"] * (1.0 if pd.get("team") == task["true_team"] else 0.0)
+        t = w["team_assignment"] * (0.99 if pd.get("team") == task["true_team"] else 0.0)
 
         # Info request — novel scored mechanic
         if self.info_request_hit:
-            ir = w["info_request"] * 1.0     # asked for the right thing
+            ir = w["info_request"] * 0.99    # asked for the right thing
         elif self.info_requested:
             ir = w["info_request"] * 0.30    # asked something, not the key evidence
         else:
@@ -421,11 +427,16 @@ class Task4Grader:
         rsn = w["reasoning_quality"] * _reasoning_score(self.reasons_given, "hard")
 
         total = c + p + t + ir + r + rsn
+
+        # Apply SLA penalty if needed
         if self.sla_breached:
             total *= 0.80
-            total = max(0.0, min(1.0, total))
-            total = max(1e-6, min(1 - 1e-6, total))
-            return round(total, 6)
+
+        # ALWAYS normalize
+        total = min(1 - 1e-6, max(1e-4, total))
+
+        total = min(0.9999, max(1e-4, total))
+        return float(f"{total:.6f}")
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
