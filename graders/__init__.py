@@ -14,6 +14,21 @@ from __future__ import annotations
 from typing import Dict, Any
 from env.state import Observation, Action, StepInfo
 
+def final_score(total: float) -> float:
+    # hard clamp first
+    total = max(1e-4, min(0.9999, total))
+
+    # format safely
+    total = float(f"{total:.6f}")
+
+    # enforce AGAIN after formatting (CRITICAL)
+    if total <= 0.0:
+        return 0.0001
+    if total >= 1.0:
+        return 0.9999
+
+    return total
+
 def _response_score(response: str, task: Dict[str, Any]) -> float:
     rv        = (response or "").lower()
     must_inc  = task.get("response_must_include", [])
@@ -86,8 +101,7 @@ class Task1Grader:
         # ALWAYS normalize
         total = min(1 - 1e-6, max(1e-4, total))
  
-        total = min(0.9999, max(1e-4, total))
-        return float(f"{total:.6f}")
+        return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -179,8 +193,7 @@ class Task2Grader:
         # ALWAYS normalize
         total = min(1 - 1e-6, max(1e-4, total))
 
-        total = min(0.9999, max(1e-4, total))
-        return float(f"{total:.6f}")
+        return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -295,8 +308,7 @@ class Task3Grader:
         # ALWAYS normalize
         total = min(1 - 1e-6, max(1e-4, total))
 
-        total = min(0.9999, max(1e-4, total))
-        return float(f"{total:.6f}")
+        treturn final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -435,8 +447,7 @@ class Task4Grader:
         # ALWAYS normalize
         total = min(1 - 1e-6, max(1e-4, total))
 
-        total = min(0.9999, max(1e-4, total))
-        return float(f"{total:.6f}")
+        return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
