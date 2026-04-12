@@ -411,7 +411,7 @@ def main() -> int:
             import traceback
             traceback.print_exc()
             report = {"task": task_id, "score": 0.001, "steps": 0, "rewards": [], "error": str(e)}
-            log_end(success=False, steps=0, score=0.0, rewards=[])
+            log_end(success=False, steps=0, score=0.001, rewards=[])
         all_reports[task_id] = report
 
     avg = sum(all_reports[t].get("score", 0.0) for t in tasks_to_run) / len(tasks_to_run)
