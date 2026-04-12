@@ -385,7 +385,7 @@ def run_task(task_id: str, seed: int = 42) -> dict:
     if task_score is None:
         task_score = sum(r for r in rewards if r > 0) / max(len(rewards), 1)
     task_score = float(task_score)
-    task_score = max(0.0, min(1.0, task_score))
+    task_score = max(0.01, min(0.999, task_score))
 
     success = task_score >= SUCCESS_SCORE_THRESHOLD
     log_end(success=success, steps=steps_taken, score=task_score, rewards=rewards)
@@ -410,7 +410,7 @@ def main() -> int:
         except Exception as e:
             import traceback
             traceback.print_exc()
-            report = {"task": task_id, "score": 0.0, "steps": 0, "rewards": [], "error": str(e)}
+            report = {"task": task_id, "score": 0.001, "steps": 0, "rewards": [], "error": str(e)}
             log_end(success=False, steps=0, score=0.0, rewards=[])
         all_reports[task_id] = report
 
