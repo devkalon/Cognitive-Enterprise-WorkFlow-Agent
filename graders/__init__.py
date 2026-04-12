@@ -15,15 +15,15 @@ from typing import Dict, Any
 from env.state import Observation, Action, StepInfo
 
 def final_score(total: float) -> float:
-    # clamp BEFORE rounding
-    total = max(1e-4, min(0.999, total))
+    # Step 1: clamp safely INSIDE range (not touching edges)
+    total = max(0.001, min(0.999, total))
 
-    # round safely
+    # Step 2: round
     total = round(total, 6)
 
-    # FINAL HARD GUARD (CRITICAL)
+    # Step 3: HARD GUARANTEE (post-round)
     if total <= 0.0:
-        return 0.0001
+        return 0.001
     if total >= 1.0:
         return 0.999
 
@@ -40,7 +40,7 @@ def _response_score(response: str, task: Dict[str, Any]) -> float:
     score -= forbidden * 0.20
 
     # enforce strict bounds
-    return max(0.0001, min(0.99, score))
+    return max(0.001, min(0.999, score))
 
 
 def _priority_score(given, true_priority: int) -> float:
