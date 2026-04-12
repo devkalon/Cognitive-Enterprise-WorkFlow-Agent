@@ -14,6 +14,14 @@ from __future__ import annotations
 from typing import Dict, Any
 from env.state import Observation, Action, StepInfo
 
+def safe_score(score: float) -> float:
+    EPS = 1e-6
+    if score <= 0:
+        return EPS
+    if score >= 1:
+        return 1 - EPS
+    return score
+
 
 def _response_score(response: str, task: Dict[str, Any]) -> float:
     """Score response 0.0–1.0 using must_include and must_not_include."""
@@ -77,7 +85,9 @@ class Task1Grader:
         total = c + p + t + r
         if self.sla_breached:
             total *= 0.85
-        return round(max(0.0, min(1.0, total)), 4)
+            total = max(0.0, min(1.0, total))
+            total = safe_score(total)
+            return round(total, 4)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -163,7 +173,9 @@ class Task2Grader:
         total = c + p + t + e + r
         if self.sla_breached:
             total *= 0.80
-        return round(max(0.0, min(1.0, total)), 4)
+            total = max(0.0, min(1.0, total))
+            total = safe_score(total)
+            return round(total, 4)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -272,7 +284,9 @@ class Task3Grader:
         total = c + p + t + e + r + rsn
         if self.sla_breached:
             total *= 0.75
-        return round(max(0.0, min(1.0, total)), 4)
+            total = max(0.0, min(1.0, total))
+            total = safe_score(total)
+            return round(total, 4)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
@@ -405,7 +419,9 @@ class Task4Grader:
         total = c + p + t + ir + r + rsn
         if self.sla_breached:
             total *= 0.80
-        return round(max(0.0, min(1.0, total)), 4)
+            total = max(0.0, min(1.0, total))
+            total = safe_score(total)
+            return round(total, 4)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
         pd = final_obs.partial_decisions
