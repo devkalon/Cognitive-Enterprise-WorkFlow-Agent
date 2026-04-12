@@ -15,13 +15,20 @@ from typing import Dict, Any
 from env.state import Observation, Action, StepInfo
 
 def final_score(total: float) -> float:
-    # Step 1: clamp safely INSIDE range (not touching edges)
+    try:
+        if total is None or total != total:
+            return 0.5
+    except:
+        return 0.5
+
+    if total <= 0.0:
+        total = 0.001
+    elif total >= 1.0:
+        total = 0.999
+
     total = max(0.001, min(0.999, total))
+    total = float(f"{total:.6f}")
 
-    # Step 2: round
-    total = round(total, 6)
-
-    # Step 3: HARD GUARANTEE (post-round)
     if total <= 0.0:
         return 0.001
     if total >= 1.0:
@@ -40,7 +47,7 @@ def _response_score(response: str, task: Dict[str, Any]) -> float:
     score -= forbidden * 0.20
 
     # enforce strict bounds
-    return max(0.001, min(0.999, score))
+    return max(0.05, min(0.999, score))
 
 
 def _priority_score(given, true_priority: int) -> float:
@@ -60,7 +67,7 @@ def _priority_score(given, true_priority: int) -> float:
 def _reasoning_score(reasons_given: int, difficulty: str) -> float:
     needed = {"easy": 1, "medium": 2, "hard": 3}[difficulty]
     score = reasons_given / needed
-    return max(0.0001, min(0.99, score))
+    return max(0.05, min(0.99, score))
 
 
 # ── Grader 1 — Easy ────────────────────────────────────────────────────────
@@ -99,6 +106,14 @@ class Task1Grader:
             total *= 0.85
 
         # ALWAYS normalize
+        # prevent zero-total edge
+        if total <= 0:
+            total = 0.01
+
+        # prevent overflow
+        if total >= 1:
+            total = 0.99
+
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
@@ -189,6 +204,14 @@ class Task2Grader:
              total *= 0.80
 
         # ALWAYS normalize
+        # prevent zero-total edge
+        if total <= 0:
+            total = 0.01
+
+        # prevent overflow
+        if total >= 1:
+            total = 0.99
+
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
@@ -302,6 +325,14 @@ class Task3Grader:
             total *= 0.75
 
         # ALWAYS normalize
+        # prevent zero-total edge
+        if total <= 0:
+            total = 0.01
+
+        # prevent overflow
+        if total >= 1:
+            total = 0.99
+
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
@@ -439,6 +470,14 @@ class Task4Grader:
             total *= 0.80
 
         # ALWAYS normalize
+        # prevent zero-total edge
+        if total <= 0:
+            total = 0.01
+
+        # prevent overflow
+        if total >= 1:
+            total = 0.99
+
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
