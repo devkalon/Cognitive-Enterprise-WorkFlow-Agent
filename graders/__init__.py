@@ -15,17 +15,17 @@ from typing import Dict, Any
 from env.state import Observation, Action, StepInfo
 
 def final_score(total: float) -> float:
-    # hard clamp first
-    total = max(1e-4, min(0.9999, total))
+    # clamp BEFORE rounding
+    total = max(1e-4, min(0.999, total))
 
-    # format safely
-    total = float(f"{total:.6f}")
+    # round safely
+    total = round(total, 6)
 
-    # enforce AGAIN after formatting (CRITICAL)
+    # FINAL HARD GUARD (CRITICAL)
     if total <= 0.0:
         return 0.0001
     if total >= 1.0:
-        return 0.9999
+        return 0.999
 
     return total
 
@@ -40,19 +40,19 @@ def _response_score(response: str, task: Dict[str, Any]) -> float:
     score -= forbidden * 0.20
 
     # enforce strict bounds
-    return max(1e-6, min(1 - 1e-6, score))
+    return max(0.0001, min(0.99, score))
 
 
 def _priority_score(given, true_priority: int) -> float:
     try:
         diff = abs(int(given) - true_priority)
     except:
-        return 1e-4
+        return 0.2   # SAFE fallback
 
     if diff == 0: score = 0.98
     elif diff == 1: score = 0.50
     elif diff == 2: score = 0.15
-    else: score = 1e-4
+    else: score = 0.1   # SAFE minimum
 
     return score
 
@@ -60,7 +60,7 @@ def _priority_score(given, true_priority: int) -> float:
 def _reasoning_score(reasons_given: int, difficulty: str) -> float:
     needed = {"easy": 1, "medium": 2, "hard": 3}[difficulty]
     score = reasons_given / needed
-    return max(1e-6, min(1 - 1e-6, score))
+    return max(0.0001, min(0.99, score))
 
 
 # ── Grader 1 — Easy ────────────────────────────────────────────────────────
@@ -87,9 +87,9 @@ class Task1Grader:
         pd = final_obs.partial_decisions
         w  = task["task_context"]["score_weights"]
 
-        c  = w["classification"]   * (0.99 if pd.get("classification") == task["true_category"] else 0.0)
+        c  = w["classification"]   * (0.99 if pd.get("classification") == task["true_category"] else 0.05)
         p  = w["priority"]         * _priority_score(pd.get("priority"), task["true_priority"])
-        t  = w["team_assignment"]  * (0.99 if pd.get("team") == task["true_team"] else 0.0)
+        t  = w["team_assignment"]  * (0.99 if pd.get("team") == task["true_team"] else 0.05)
         r  = w["response_quality"] * _response_score(pd.get("response", ""), task)
 
         total = c + p + t + r
@@ -99,8 +99,6 @@ class Task1Grader:
             total *= 0.85
 
         # ALWAYS normalize
-        total = min(1 - 1e-6, max(1e-4, total))
- 
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
@@ -160,16 +158,16 @@ class Task2Grader:
         pd = final_obs.partial_decisions
         w  = task["task_context"]["score_weights"]
 
-        c = w["classification"]  * (0.99 if pd.get("classification") == task["true_category"] else 0.0)
+        c = w["classification"]  * (0.99 if pd.get("classification") == task["true_category"] else 0.05)
         p = w["priority"]        * _priority_score(pd.get("priority"), task["true_priority"])
 
         # Team — extra penalty for choosing tech on security incident
         if pd.get("team") == task["true_team"]:
             t = w["team_assignment"] * 0.99
         elif self.assigned_tech:
-            t = w["team_assignment"] * -0.30   # fell for distractor
+            t = w["team_assignment"] * 0.05   # fell for distractor
         else:
-            t = 0.0
+            t = w["team_assignment"] * 0.05
 
         # Escalation (bidirectional)
         requires = task.get("requires_escalation", False)
@@ -178,9 +176,9 @@ class Task2Grader:
         elif not requires and not self.escalated:
             e = w["escalation_decision"] * 0.99
         elif requires and not self.escalated:
-            e = w["escalation_decision"] * -0.50  # missed mandatory escalation
+            e = w["escalation_decision"] * 0.05  # missed mandatory escalation
         else:
-            e = w["escalation_decision"] * -0.25  # unnecessary escalation
+            e = w["escalation_decision"] * 0.05  # unnecessary escalation
 
         r = w["response_quality"] * _response_score(pd.get("response", ""), task)
 
@@ -191,8 +189,6 @@ class Task2Grader:
              total *= 0.80
 
         # ALWAYS normalize
-        total = min(1 - 1e-6, max(1e-4, total))
-
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
@@ -270,9 +266,9 @@ class Task3Grader:
         if pd.get("classification") == task["true_category"]:
             c = w["classification"] * 0.99
         elif self.chose_billing or self.chose_hr:
-            c = w["classification"] * -0.25  # fell for a distractor
+            c = w["classification"] * 0.05  # fell for a distractor
         else:
-            c = 0.0
+            c = w["classification"] * 0.05
 
         p = w["priority"] * _priority_score(pd.get("priority"), task["true_priority"])
 
@@ -280,9 +276,9 @@ class Task3Grader:
         if pd.get("team") == task["true_team"]:
             t = w["team_assignment"] * 0.99
         elif self.chose_finance_team or self.chose_hr_team:
-            t = w["team_assignment"] * -0.20  # chose distractor team
+            t = w["team_assignment"] * 0.05  # chose distractor team
         else:
-            t = 0.0
+            t = w["team_assignment"] * 0.05
 
         # Escalation
         requires = task.get("requires_escalation", False)
@@ -291,9 +287,9 @@ class Task3Grader:
         elif not requires and not self.escalated:
             e = w["escalation_decision"] * 0.99
         elif requires and not self.escalated:
-            e = w["escalation_decision"] * -0.60
+            e = w["escalation_decision"] * 0.05
         else:
-            e = w["escalation_decision"] * -0.30
+            e = w["escalation_decision"] * 0.05
 
         r = w["response_quality"] * _response_score(pd.get("response", ""), task)
 
@@ -306,8 +302,6 @@ class Task3Grader:
             total *= 0.75
 
         # ALWAYS normalize
-        total = min(1 - 1e-6, max(1e-4, total))
-
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
@@ -404,7 +398,7 @@ class Task4Grader:
         w  = task["task_context"]["score_weights"]
 
         # Classification
-        c = w["classification"] * (0.99 if pd.get("classification") == task["true_category"] else 0.0)
+        c = w["classification"] * (0.99 if pd.get("classification") == task["true_category"] else 0.05)
 
         # Priority — p=3 is correct; p=4 gets partial; p=5 is wrong (outage resolved)
         p_given = pd.get("priority")
@@ -417,12 +411,12 @@ class Task4Grader:
         elif diff == 1:
             p = w["priority"] * 0.40
         elif self.chose_high_priority:
-            p = w["priority"] * -0.20   # confidently wrong: treating resolved incident as live
+            p = w["priority"] * 0.05   # confidently wrong: treating resolved incident as live
         else:
-            p = 0.0
+            p = w["priority"] * 0.05
 
         # Team
-        t = w["team_assignment"] * (0.99 if pd.get("team") == task["true_team"] else 0.0)
+        t = w["team_assignment"] * (0.99 if pd.get("team") == task["true_team"] else 0.05)
 
         # Info request — novel scored mechanic
         if self.info_request_hit:
@@ -430,7 +424,7 @@ class Task4Grader:
         elif self.info_requested:
             ir = w["info_request"] * 0.30    # asked something, not the key evidence
         else:
-            ir = w["info_request"] * -0.10   # never requested info — missed the mechanism
+            ir = w["info_request"] * 0.05  # never requested info — missed the mechanism
 
         # Response quality
         r = w["response_quality"] * _response_score(pd.get("response", ""), task)
@@ -445,8 +439,6 @@ class Task4Grader:
             total *= 0.80
 
         # ALWAYS normalize
-        total = min(1 - 1e-6, max(1e-4, total))
-
         return final_score(total)
 
     def report(self, final_obs: Observation, task: Dict[str, Any]) -> dict:
