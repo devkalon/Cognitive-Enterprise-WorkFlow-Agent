@@ -184,5 +184,5 @@ cewa-final/
 ---
 
 ## License
-MIT
+MIT License
 >>>>>>> 8a8e0e2 (Initial commit: CEWA OpenEnv environment)
